@@ -2,5 +2,4 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-channel: 4.5
-startingCSV: serverless-operator.v1.8.0
+channel: 4.6

@@ -5,4 +5,4 @@
 namespace: cicd
 
 channel: alpha
-startingCSV: argocd-operator.v0.0.12
+startingCSV: argocd-operator.v0.0.14
