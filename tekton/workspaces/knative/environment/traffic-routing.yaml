@@ -1,0 +1,5 @@
+- op: add
+  path: /spec/traffic
+  value:
+    - revisionName: ${APPLICATION_NAME}-${REVISION}
+      percent: 100

@@ -1,0 +1,40 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: ${APPLICATION}-listener
+spec:
+  serviceAccountName: pipeline
+  triggers:
+  - interceptors:
+    - github:
+        secretRef:
+          secretName: ${GITHUB_SECRET}
+          secretKey: token
+        eventTypes:
+          - push
+    - cel:
+        overlays:
+        - key: extensions.head_commit.truncated_id
+          expression: 'body.head_commit.id.truncate(7)'
+    bindings:
+    - ref: webhook-body-binding
+    - ref: ${APPLICATION}-binding
+    template:
+      name: knative-pipeline-template
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: ${APPLICATION}-binding
+spec:
+  params:
+  - name: deployment-git-repo-url
+    value: ${DEPLOYMENT_REPO_URL}
+  - name: deployment-git-revision
+    value: ${DEPLOYMENT_REPO_REVISION}
+  - name: dockerfile
+    value: ./src/main/docker/Dockerfile.jvm
+  - name: image-registry
+    value: image-registry.openshift-image-registry.svc.cluster.local:5000
+  - name: image-repository
+    value: ${NS}

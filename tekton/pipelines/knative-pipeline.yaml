@@ -1,0 +1,158 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: knative-pipeline
+spec:
+  description: |
+    This pipeline will clone a given repository revision, build a Quarkus application,
+    pushing the final image into the Openshift internal registry and finally, generate 
+    a knative set of base objects that will be pushed into the deployment repository
+  params:
+  - name: application
+    type: string
+    description: Name for the application 
+  - name: source-repo-url
+    type: string
+    description: The git repository URL to clone from.
+  - name: source-revision
+    type: string
+    description: The git revision to clone.
+  - name: short-source-revision
+    type: string
+    description: Short commit id
+  - name: deployment-repo-url
+    type: string
+    description: The git repository URL to clone from.
+  - name: deployment-revision
+    type: string
+    description: The git revision to clone.
+  - name: image-registry
+    type: string
+    description: Image registry
+  - name: image-repository
+    type: string
+    description: Image repository within image-registry the image will be pushed to
+  - name: dockerfile
+    type: string
+    description: Dockerfile location used to build the final image
+  workspaces:
+  - name: source
+  - name: maven-settings
+  - name: knative-kustomize-base
+  - name: knative-kustomize-environment
+  tasks:
+  - name: fetch-source-repository
+    taskRef:
+      name: git-clone
+      kind: ClusterTask
+    workspaces:
+    - name: output
+      workspace: source
+    params:
+    - name: url
+      value: $(params.source-repo-url)
+    - name: revision
+      value: $(params.source-revision)
+    - name: subdirectory
+      value: $(params.source-revision)
+    - name: deleteExisting
+      value: "true"
+  - name: maven-build-and-test
+    taskRef:
+      name: maven
+      kind: ClusterTask
+    runAfter:
+      - fetch-source-repository
+    workspaces:
+      - name: source
+        workspace: source
+      - name: maven-settings
+        workspace: maven-settings
+    params:
+      - name: GOALS
+        value: ["-f", "$(params.source-revision)/pom.xml", "clean", "package"] 
+  - name: image-build-and-push
+    taskRef:
+      name: buildah
+# use task taken from hub (so no pipeline resource is needed...)
+#      kind: ClusterTask
+    params:
+      - name: TLSVERIFY
+        value: "false"
+      - name: IMAGE
+        value: $(params.image-registry)/$(params.image-repository)/$(params.application):$(params.source-revision)
+      - name: CONTEXT
+        value: $(workspaces.source.path)/$(params.source-revision)
+      - name: DOCKERFILE
+        value: $(params.dockerfile)
+    workspaces: 
+      - name: source 
+        workspace: source 
+    runAfter:
+      - maven-build-and-test
+  - name: fetch-deployment-repository
+    taskRef:
+      name: git-clone
+      kind: ClusterTask
+    workspaces:
+    - name: output
+      workspace: source
+    params:
+    - name: url
+      value: $(params.deployment-repo-url)
+    - name: revision
+      value: $(params.deployment-revision)
+    - name: subdirectory
+      value: $(params.source-revision)-deployment
+    - name: deleteExisting
+      value: "true"
+    runAfter:
+      - image-build-and-push
+  - name: push-knative-manifest 
+    taskRef:
+      name: push-knative-manifest
+    workspaces:
+    - name: source
+      workspace: source
+    - name: knative-kustomize-base
+      workspace: knative-kustomize-base
+    - name: knative-kustomize-environment
+      workspace: knative-kustomize-environment
+    params:
+    - name: application
+      value: $(params.application)
+    - name: source-commit-id
+      value: $(params.source-revision)
+    - name: short-source-commit-id
+      value: $(params.short-source-revision)
+    - name: source-subdirectory
+      value: $(params.source-revision)
+    - name: deployment-subdirectory
+      value: $(params.source-revision)-deployment
+    - name: image-registry
+      value: $(params.image-registry)
+    - name: image-repository
+      value: $(params.image-repository)
+    runAfter:
+      - fetch-deployment-repository   
+  # finally clause is added in 0.14.. we are currently using 0.11
+  # workaround, just for those success pipelines, remove directory
+  finally:  
+    - name: cleanup-source-workspace
+      taskRef:
+        name: workspace-cleaner
+      workspaces:
+        - name: root-workspace
+          workspace: source
+      params:
+        - name: directory
+          value: $(params.source-revision)
+    - name: cleanup-deployment-workspace
+      taskRef:
+        name: workspace-cleaner
+      workspaces:
+        - name: root-workspace
+          workspace: source
+      params:
+        - name: directory
+          value: $(params.source-revision)-deployment

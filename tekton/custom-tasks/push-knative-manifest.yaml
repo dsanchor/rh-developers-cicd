@@ -1,0 +1,249 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: push-knative-manifest
+spec:
+  description: >-
+    This task will push all required manifests to run a Knative Service, initializing them
+    if they dont exists or updating them if new version is created.
+    There will basically manage 3 kinds of environments:
+    - development: manifests will be pushed and existing kustomization.yaml will be updated
+    - staging and production: manifests will be pushed but kustomization.yaml will not be updated. It will only 
+    create a new kustomization-$revision.yaml to be considered for manual revision and update.
+  workspaces:
+    - name: source
+      description: The source workspace where both source code and deployment repo have been checkout
+    - name: knative-kustomize-base
+      description: Workspace to obtain all templates for building the kustomize base knative manifests
+    - name: knative-kustomize-environment
+      description: Workspace to obtain all templates for building the kustomize knative manifests specific for each environment
+  params:
+    - name: application
+      description: application name
+      type: string
+    - name: source-commit-id
+      description: full source commit id
+      type: string
+    - name: short-source-commit-id
+      description: full source commit id
+      type: string
+    - name: source-subdirectory
+      description: subdirectory within source workspace where source code repository has been checkout
+      type: string
+    - name: deployment-subdirectory
+      description: subdirectory within source workspace where deployment repository has been checkout
+      type: string
+    - name: image-registry
+      description: image registry. Used for set image in manifests.
+    - name: image-repository
+      type: string
+      description: Image repository within image-registry. Used for set image in manifests
+  steps:
+    - name: create-kustomize-base-manifests
+      image: quay.io/dsanchor/ubi8-git:0.0.2
+      script: |
+        #!/bin/sh
+        set -eu -o pipefail
+
+        DEPLOYMENT_DIR="$(workspaces.source.path)/$(params.deployment-subdirectory)"
+
+        TEMPLATES_DIR="$(workspaces.knative-kustomize-base.path)"
+
+        BASE_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/base"
+        # Check if base directory exists
+        if [ ! -d "$BASE_DEPLOYMENT_DIR" ]
+        then
+          echo "$BASE_DEPLOYMENT_DIR does not exists, it will be created"
+          mkdir -p $BASE_DEPLOYMENT_DIR
+        else
+          echo "$BASE_DEPLOYMENT_DIR already exists, no need to create it"
+        fi
+
+        BASE_KUST_FILE="$BASE_DEPLOYMENT_DIR/kustomization.yaml"
+        # Check if base kustomization.yaml exists
+        if [ ! -f "$BASE_KUST_FILE" ]
+        then
+          echo "$BASE_KUST_FILE does not exists, it will be initialized"
+          cp $TEMPLATES_DIR/kustomization.yaml $BASE_KUST_FILE         
+        else
+          echo "$BASE_KUST_FILE already exists, no need to create it"
+        fi
+
+
+        BASE_KSVC_FILE="$BASE_DEPLOYMENT_DIR/kservice.yaml"
+        # Check if base kservice.yaml exists
+        if [ ! -f "$BASE_KSVC_FILE" ]
+        then
+          echo "$BASE_KSVC_FILE does not exists, it will be initialized"
+          cat $TEMPLATES_DIR/kservice.yaml | APPLICATION_NAME=$(params.application) \
+            envsubst > $BASE_KSVC_FILE    
+        else 
+          echo "$BASE_KSVC_FILE already exists, no need to create it"   
+        fi
+
+        BASE_GLCM_FILE="$BASE_DEPLOYMENT_DIR/global-ops-configmap.yaml"
+        # Check if base global-ops-configmap.yaml exists
+        if [ ! -f "$BASE_GLCM_FILE" ]
+        then
+          echo "$BASE_GLCM_FILE does not exists, it will be initialized"
+          cat $TEMPLATES_DIR/global-ops-configmap.yaml | APPLICATION_NAME=$(params.application) \
+            envsubst > $BASE_GLCM_FILE    
+        else 
+          echo "$BASE_GLCM_FILE already exists, no need to create it"   
+        fi
+
+    - name: create-kustomize-manifests-per-environment
+      image: quay.io/dsanchor/ubi8-git:0.0.2
+      script: |
+        #!/bin/sh
+        set -eu -o pipefail
+
+        SOURCE_DIR="$(workspaces.source.path)/$(params.source-subdirectory)"
+        DEPLOYMENT_DIR="$(workspaces.source.path)/$(params.deployment-subdirectory)"
+        # add r as prefix (to denote revision)
+        REVISION=r$(params.short-source-commit-id)  
+
+        TEMPLATES_DIR="$(workspaces.knative-kustomize-environment.path)"
+
+        init_env_folder() {
+          env=$1
+          ENV_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/$env"
+          # Check if env directory exists
+          if [ ! -d "$ENV_DEPLOYMENT_DIR" ]
+          then
+            echo "$ENV_DEPLOYMENT_DIR does not exists, it will be created"
+            mkdir -p $ENV_DEPLOYMENT_DIR
+          else
+            echo "$ENV_DEPLOYMENT_DIR already exists, no need to create it"
+          fi
+
+        }
+
+        init_env_folder development
+        init_env_folder staging
+        init_env_folder production
+
+        echo "Removing old revisions manifests... but keeping any existing traffic-routing.yaml"
+
+        init_service_traffic_routing() {
+          env=$1
+          ENV_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/$env"
+          ENV_TR_FILE="$ENV_DEPLOYMENT_DIR/traffic-routing.yaml"
+          # Check if env traffic-routing.yaml exists 
+          if [ ! -f "$ENV_TR_FILE" ]
+          then
+            echo "$ENV_TR_FILE does not exists, it will be initialized"
+            cat $TEMPLATES_DIR/traffic-routing.yaml | APPLICATION_NAME=$(params.application) \
+              REVISION=$REVISION envsubst > $ENV_TR_FILE          
+          else
+            echo "Keeping existing $ENV_TR_FILE"
+          fi    
+        }
+
+        init_service_traffic_routing development
+        init_service_traffic_routing staging
+        init_service_traffic_routing production
+
+        init_service_env_configmap() {
+          env=$1
+          ENV_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/$env"
+          ENV_CM_FILE="$ENV_DEPLOYMENT_DIR/env-ops-configmap.yaml"
+          # Check if env-ops-configmap.yaml exists
+          if [ ! -f "$ENV_CM_FILE" ]
+          then
+            echo "$ENV_CM_FILE does not exists, it will be initialized"
+            cat $TEMPLATES_DIR/env-ops-configmap.yaml | APPLICATION_NAME=$(params.application) \
+              envsubst > $ENV_CM_FILE    
+          else 
+            echo "Keeping existing $ENV_CM_FILE"   
+          fi  
+        }
+
+        init_service_env_configmap development
+        init_service_env_configmap staging
+        init_service_env_configmap production
+
+
+        DEV_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/development"
+        STG_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/staging"
+        PROD_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/production"
+
+
+        # only in dev  
+        
+        DEV_KUST_FILE="$DEV_DEPLOYMENT_DIR/kustomization.yaml"
+        # Check if dev kustomization.yaml exists before deleting it
+        if [ ! -f "$DEV_KUST_FILE" ]
+        then
+          echo "$DEV_KUST_FILE does not exists, no need to remove it"      
+        else
+          echo "Removing old $DEV_KUST_FILE"
+          rm $DEV_KUST_FILE
+        fi 
+
+        create_env_kustomization() {
+          env=$1
+          revision=$2
+          file=$3
+          # create new kustomization.yaml 
+          echo "Creating new kustomization for revision $revision"
+          cat $TEMPLATES_DIR/kustomization.yaml | REVISION=$revision \
+            envsubst > $file   
+        }
+
+        create_env_kustomization development $REVISION $DEV_DEPLOYMENT_DIR/kustomization.yaml
+        # notice that we dont create/overwrite the kustomization.yaml in staging or production
+        # we want somebody to manually review and approve it
+        create_env_kustomization staging $REVISION $STG_DEPLOYMENT_DIR/kustomization-$REVISION.yaml
+        create_env_kustomization staging $REVISION $PROD_DEPLOYMENT_DIR/kustomization-$REVISION.yaml
+
+        # delete old revisions folders ONLY in development
+        rm -rf $DEV_DEPLOYMENT_DIR/r*/
+
+        create_revision_files() {
+          env=$1
+
+          # create new revision folder
+          ENV_REVISION_DIR="$DEPLOYMENT_DIR/$env/$REVISION"
+          mkdir -p $ENV_REVISION_DIR
+
+          SOURCE_MANIFESTS_DIR="$SOURCE_DIR/k8s-config/$env"
+          if [ -d "$SOURCE_MANIFESTS_DIR" ]
+          then
+            # copy resources from application source code. Ex: configmap.yaml
+            echo "Copying resources from application source code for $env environment"
+            cp $SOURCE_MANIFESTS_DIR/* $ENV_REVISION_DIR
+          fi
+
+          # create routing for that particular revision
+          cat $TEMPLATES_DIR/routing-patch.yaml | APPLICATION_NAME=$(params.application) \
+            REVISION=$REVISION envsubst > $ENV_REVISION_DIR/routing-patch.yaml 
+
+          # create additional knative revision data patch
+          cat $TEMPLATES_DIR/revision-patch.yaml | APPLICATION_NAME=$(params.application) \
+            IMAGE_REGISTRY=$(params.image-registry)  IMAGE_REPOSITORY=$(params.image-repository) \
+            REVISION=$REVISION IMAGE_TAG=$(params.source-commit-id) \
+            envsubst > $ENV_REVISION_DIR/revision-patch.yaml
+        }
+
+        create_revision_files development
+        create_revision_files staging
+        create_revision_files production
+        
+
+    - name: push-manifest-to-git
+      image: quay.io/dsanchor/ubi8-git:0.0.2
+      script: |
+        #!/bin/sh
+        set -eu -o pipefail
+
+        DEPLOYMENT_DIR="$(workspaces.source.path)/$(params.deployment-subdirectory)"
+        cd $DEPLOYMENT_DIR
+
+        git config --global user.email "bot@tekton-pipelines.dev"
+        git config --global user.name "tekton-pipelines-bot"
+     
+        git add --a -v 
+        git commit -m "New knative manifests for commit $(params.source-commit-id) of application $(params.application)"
+        # FIXME master harcoded
+        git push origin HEAD:master

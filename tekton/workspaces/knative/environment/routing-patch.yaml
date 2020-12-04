@@ -1,0 +1,5 @@
+- op: add
+  path: /spec/traffic/-
+  value:
+    tag: ${REVISION}
+    revisionName: ${APPLICATION_NAME}-${REVISION}

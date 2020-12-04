@@ -1,0 +1,41 @@
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: edit-${TEAM}-dev
+  namespace: development
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: ${CICD_NS}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: edit-${TEAM}-staging
+  namespace: staging
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: ${CICD_NS}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: edit-${TEAM}-production
+  namespace: production
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: ${CICD_NS}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit

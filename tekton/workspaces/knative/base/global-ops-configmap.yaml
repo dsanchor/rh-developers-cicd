@@ -1,0 +1,4 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+   name: global-ops-${APPLICATION_NAME}

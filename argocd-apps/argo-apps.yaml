@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quarkus-hello-world-development
+  namespace: ${CICD_NS}
+spec:
+  destination:
+    namespace: development
+    server: 'https://kubernetes.default.svc'
+  project: ${TEAM}
+  source:
+    path: development
+    repoURL: ${DEPLOYMENT_REPOSITORY_URL}
+    targetRevision: ${DEPLOYMENT_REPOSITORY_REVISION}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quarkus-hello-world-staging
+  namespace: ${CICD_NS}
+spec:
+  destination:
+    namespace: staging
+    server: 'https://kubernetes.default.svc'
+  project: ${TEAM}
+  source:
+    path: staging
+    repoURL: ${DEPLOYMENT_REPOSITORY_URL}
+    targetRevision: ${DEPLOYMENT_REPOSITORY_REVISION}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quarkus-hello-world-production
+  namespace: ${CICD_NS}
+spec:
+  destination:
+    namespace: production
+    server: 'https://kubernetes.default.svc'
+  project: ${TEAM}
+  source:
+    path: production
+    repoURL: ${DEPLOYMENT_REPOSITORY_URL}
+    targetRevision: ${DEPLOYMENT_REPOSITORY_REVISION}

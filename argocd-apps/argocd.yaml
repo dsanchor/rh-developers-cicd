@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ArgoCD
+metadata:
+  name: argocd
+spec:
+  dex:
+    image: quay.io/redhat-cop/dex 
+    version: v2.22.0-openshift
+    openShiftOAuth: true
+  rbac:
+    defaultPolicy: 'role:admin'
+  server:
+    route:
+      enabled: true

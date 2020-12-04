@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: workspace-cleaner
+spec:
+  description: >-
+    This task will remove a given directory from the configured workspace
+  workspaces:
+    - name: root-workspace
+      description: The root workpace that will be clean up 
+  params:
+    - name: directory
+      description: Directory to be removed within root workspace
+      type: string
+  steps:
+    - name: clean-up-workspace
+      image: registry.access.redhat.com/ubi8/ubi-minimal:8.2
+      script: |
+        #!/bin/sh
+        set -eu -o pipefail
+
+        WORKING_DIR="$(workspaces.root-workspace.path)/$(params.directory)"
+
+        echo "Removing content of directory ${WORKING_DIR}"
+        rm -rf ${WORKING_DIR}

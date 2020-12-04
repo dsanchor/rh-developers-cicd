@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: knative-pipeline-run-
+spec:
+  pipelineRef:
+    name: knative-pipeline
+  params:
+    - name: application
+      value: quarkus-hello-world
+    - name: source-repo-url
+      value: ${SOURCE_REPO}
+    - name: source-revision
+      value: ${COMMIT}
+    - name: short-source-revision
+      value: "${SHORT_COMMIT}"
+    - name: deployment-repo-url
+      value: ${DEPLOYMENT_REPO}
+    - name: deployment-revision
+      value: master
+    - name: dockerfile
+      value: ./src/main/docker/Dockerfile.jvm
+    - name: image-registry
+      value: image-registry.openshift-image-registry.svc.cluster.local:5000
+    - name: image-repository
+      value: ${IMAGES_NS}
+  workspaces:
+  - name: source
+    persistentvolumeclaim:
+      claimName: source-pvc 
+  - name: maven-settings
+    configMap: 
+       name: maven
+  - name: knative-kustomize-base
+    configMap: 
+       name: knative-kustomize-base
+  - name: knative-kustomize-environment
+    configMap: 
+       name: knative-kustomize-environment

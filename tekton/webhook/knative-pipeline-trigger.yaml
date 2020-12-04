@@ -1,0 +1,83 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: webhook-body-binding
+spec:
+  params:
+  - name: git-repo-url
+    value: $(body.repository.url)
+  - name: git-repo-name
+    value: $(body.repository.name)
+  - name: git-revision
+    value: $(body.head_commit.id)
+  - name: truncated-head-commit-id
+    value: $(body.extensions.head_commit.truncated_id)
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: knative-pipeline-template
+spec:
+  params:
+  - name: git-repo-url
+    description: The git repository url
+  - name: git-revision
+    description: The git revision
+    default: master
+  - name: git-repo-name
+    description: The name of the application to be packaged
+  - name: truncated-head-commit-id
+    description: Truncated commit id to shorten names if needed
+  - name: deployment-git-repo-url
+    description: The git repository url that keeps deployment desciptors
+  - name: deployment-git-revision
+    description: The git revision for deployment repo
+    default: master
+  - name: dockerfile
+    description: docker file for the image build
+    default: ./src/main/docker/Dockerfile.jvm
+  - name: image-registry
+    description: image registry, using internal as default
+    default: image-registry.openshift-image-registry.svc.cluster.local:5000
+  - name: image-repository
+    description: image repository
+  resourcetemplates:
+  - apiVersion: tekton.dev/v1beta1
+    kind: PipelineRun
+    metadata:
+      name: $(params.git-repo-name)-run-$(params.truncated-head-commit-id)
+    spec:
+      pipelineRef:
+        name: knative-pipeline
+      params:
+        - name: application
+          value: $(params.git-repo-name)
+        - name: source-repo-url
+          value: $(params.git-repo-url)
+        - name: source-revision
+          value: $(params.git-revision)
+        - name: short-source-revision
+          value: $(params.truncated-head-commit-id)
+        - name: deployment-repo-url
+          value: $(params.deployment-git-repo-url)
+        - name: deployment-revision
+          value: $(params.deployment-git-revision)
+        - name: dockerfile
+          value: $(params.dockerfile)
+        - name: image-registry
+          value: $(params.image-registry)
+        - name: image-repository
+          value: $(params.image-repository)
+      workspaces:
+      - name: source
+        persistentvolumeclaim:
+          claimName: source-pvc 
+      - name: maven-settings
+        configMap: 
+           name: maven
+      - name: knative-kustomize-base
+        configMap: 
+          name: knative-kustomize-base
+      - name: knative-kustomize-environment
+        configMap: 
+          name: knative-kustomize-environment

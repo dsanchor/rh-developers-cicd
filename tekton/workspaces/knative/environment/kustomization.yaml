@@ -1,0 +1,15 @@
+resources:
+- ../base
+- env-ops-configmap.yaml
+- ${REVISION}/configmap.yaml
+
+patches:
+- path: traffic-routing.yaml
+  target:
+    kind: Service
+- path: ${REVISION}/revision-patch.yaml
+  target:
+    kind: Service
+- path: ${REVISION}/routing-patch.yaml
+  target:
+    kind: Service

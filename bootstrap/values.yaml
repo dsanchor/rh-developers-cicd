@@ -1,0 +1,16 @@
+# Default values for bootstrap-projects.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# openshift-pipelines:
+#   channel: preview
+
+# openshift-serverless:
+#   channel: 4.5
+#   startingCSV: serverless-operator.v1.8.0
+
+# bootstrap-projects:
+#   cicdNs: cicd
+#   developmentNs: development
+#   stagingNs: staging
+#   productionNs: production

@@ -1,0 +1,8 @@
+- op: add
+  path: /spec/template/metadata
+  value:
+    name: ${APPLICATION_NAME}-${REVISION}
+- op: add
+  path: /spec/template/spec/containers/0/image
+  value:
+    ${IMAGE_REGISTRY}/${IMAGE_REPOSITORY}/${APPLICATION_NAME}:${IMAGE_TAG}
