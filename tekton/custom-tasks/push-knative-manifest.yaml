@@ -168,23 +168,17 @@ spec:
         STG_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/staging"
         PROD_DEPLOYMENT_DIR="$DEPLOYMENT_DIR/production"
 
-
-        # only in dev  
-        
-        DEV_KUST_FILE="$DEV_DEPLOYMENT_DIR/kustomization.yaml"
-        # Check if dev kustomization.yaml exists before deleting it
-        if [ ! -f "$DEV_KUST_FILE" ]
-        then
-          echo "$DEV_KUST_FILE does not exists, no need to remove it"      
-        else
-          echo "Removing old $DEV_KUST_FILE"
-          rm $DEV_KUST_FILE
-        fi 
-
         create_env_kustomization() {
           env=$1
           revision=$2
           file=$3
+          if [ ! -f "$file" ]
+          then
+            echo "$file does not exists, no need to remove it"      
+          else
+            echo "Removing old $file"
+            rm $file
+          fi 
           # create new kustomization.yaml 
           echo "Creating new kustomization for revision $revision"
           cat $TEMPLATES_DIR/kustomization.yaml | REVISION=$revision \
@@ -194,14 +188,13 @@ spec:
         create_env_kustomization development $REVISION $DEV_DEPLOYMENT_DIR/kustomization.yaml
         # notice that we dont create/overwrite the kustomization.yaml in staging or production
         # we want somebody to manually review and approve it
-        create_env_kustomization staging $REVISION $STG_DEPLOYMENT_DIR/kustomization-$REVISION.yaml
-        create_env_kustomization staging $REVISION $PROD_DEPLOYMENT_DIR/kustomization-$REVISION.yaml
-
-        # delete old revisions folders ONLY in development
-        rm -rf $DEV_DEPLOYMENT_DIR/r*/
+        create_env_kustomization staging $REVISION $STG_DEPLOYMENT_DIR/kustomization.yaml
+        create_env_kustomization staging $REVISION $PROD_DEPLOYMENT_DIR/kustomization.yaml
 
         create_revision_files() {
           env=$1
+
+          rm -rf $DEPLOYMENT_DIR/$env/r*/
 
           # create new revision folder
           ENV_REVISION_DIR="$DEPLOYMENT_DIR/$env/$REVISION"
